@@ -66,7 +66,6 @@ summary(htmod3)
 #ABCO Height = DBH/(0.2148+(0.002133*DBH))
 ABCO["pred.ht"] <- ABCO$DBH/(0.2148+(0.002133*ABCO$DBH))
 
-
 CADE <- filter(dataset, Species=="CADE")
 plot(CADE$DBH,CADE$Height,ylim=c(0,150),xlim=c(0,40))
 htmod = nls(Height~DBH/(a+(b*DBH)) ,trace=T,
