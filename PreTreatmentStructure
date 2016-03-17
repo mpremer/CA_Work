@@ -1,0 +1,83 @@
+# 2.10.2016
+# Pre-treatment data from C. Johnson, MSU
+# Premer, M.I.
+
+library(dplyr)
+library(readxl)
+library(ggplot2)
+
+#pretreatment and post-treatment structural diversity index
+
+dataset <- read_excel("C:/Users/Mike/Desktop/CA_TreeList.xlsx",sheet="Sheet1")
+names(dataset)
+
+ggplot(aes(x=DBH,y=Height),data=dataset)+
+  geom_point(stat="identity",size=I(4))+
+  facet_wrap(~Species)+
+  ylim(0,160)+
+  stat_smooth(aes(group=1),method="gam",formula=y~s(x,k=1),se=TRUE,size=2)
+  
+summary <- dataset %>%
+  mutate(dbh.class = 2*as.integer((DBH+(2/2))/2)) %>%
+  mutate(basal.area = 0.005454*(DBH^2))%>%
+  group_by(Treatment,Treat_ID,Species,dbh.class)%>% # to get stand level, just drop out the 'Species' and 'DBH' class from this line
+  summarize(density = sum(tree.factor),
+            ba.acre = sum(basal.area*density))
+
+# summary will give you a basal area and tpa table that can be written out to a .csv with:
+write.csv(summary,"C:/Users/Mike/Desktop/CA_Forest_Structure.csv") # specify where you want the output
+
+sum <- summary %>%
+  group_by(Treatment,Treat_ID)%>%
+  summarize(tot.ba = sum(ba.acre),
+            tot.tpa = sum(density))
+
+stat_smooth(method="gam",formula=y~s(x,k=1),se=FALSE,size=1.45,colour="black")+
+
+# Require species specific Height models to assign a STVI index (Strcuture index based on variance)
+# PIJE not recorded for height, probably need to supplement with FIA data
+
+ABCO <- filter(dataset,Species=="ABCO") 
+plot(ABCO$DBH,ABCO$Height,ylim=c(0,150))
+htmod = nls(Height~DBH/(a+(b*DBH)) ,trace=T,
+              start=list(b=0.002132819,a=0.21475200),
+              data=ABCO)
+nd1 = data.frame(DBH=seq(0.1,40,0.1))
+fit1 = (predict(htmod,nd1))
+points(nd1$DBH,fit1,type="l",lwd=4,lty=1)
+#ABCO Height = DBH/(0.2148+(0.002133*DBH))
+ABCO["pred.ht"] <- ABCO$DBH/(0.2148+(0.002133*ABCO$DBH))
+
+
+CADE <- filter(dataset, Species=="CADE")
+plot(CADE$DBH,CADE$Height,ylim=c(0,150),xlim=c(0,40))
+htmod = nls(Height~DBH/(a+(b*DBH)) ,trace=T,
+            start=list(b=0.000779,a=0.29304),
+            data=CADE)
+nd1 = data.frame(DBH=seq(0.1,40,0.1))
+fit1 = (predict(htmod,nd1))
+points(nd1$DBH,fit1,type="l",lwd=4,lty=1)
+#CADE Height = DBH/(0.29304+(0.000779*DBH))
+
+PILA <- filter(dataset, Species=="PILA")
+plot(PILA$DBH,PILA$Height,ylim=c(0,180),xlim=c(0,80))
+htmod = nls(Height~DBH/(a+(b*DBH)) ,trace=T,
+            start=list(b=0.002733257,a=0.220462979),
+            data=PILA)
+nd1 = data.frame(DBH=seq(0.1,80,0.1))
+fit1 = (predict(htmod,nd1))
+points(nd1$DBH,fit1,type="l",lwd=4,lty=1)
+# PILA Height = DBH/(0.220462+(0.002733*DBH))
+
+PIPO <- filter(dataset, Species=="PIPO")
+plot(PIPO$DBH,PIPO$Height,ylim=c(0,200),xlim=c(0,100))
+htmod = nls(Height~DBH/(a+(b*DBH)) ,trace=T,
+            start=list(b=0.00182,a=0.223581322),
+            data=PIPO)
+nd1 = data.frame(DBH=seq(0.1,80,0.1))
+fit1 = (predict(htmod,nd1))
+points(nd1$DBH,fit1,type="l",lwd=4,lty=1)
+#PIPO Height = DBH/(0.22358+(0.001820483*DBH))
+
+# PIJE Diameter to Height relationship taken from Lassen National Forest FIA data
+# PIJE Height = DBH/(0.19560271+(0.00433*DBH))
