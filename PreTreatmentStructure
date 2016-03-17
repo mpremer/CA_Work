@@ -32,19 +32,37 @@ sum <- summary %>%
   summarize(tot.ba = sum(ba.acre),
             tot.tpa = sum(density))
 
-stat_smooth(method="gam",formula=y~s(x,k=1),se=FALSE,size=1.45,colour="black")+
-
 # Require species specific Height models to assign a STVI index (Strcuture index based on variance)
 # PIJE not recorded for height, probably need to supplement with FIA data
 
+par(mfrow=c(1,3))
 ABCO <- filter(dataset,Species=="ABCO") 
-plot(ABCO$DBH,ABCO$Height,ylim=c(0,150))
-htmod = nls(Height~DBH/(a+(b*DBH)) ,trace=T,
+plot(ABCO$DBH,ABCO$Height,ylim=c(0,150),cex=2,xlim=c(10,50))
+htmod1 = nls(Height~DBH/(a+(b*DBH)) ,trace=T,
               start=list(b=0.002132819,a=0.21475200),
               data=ABCO)
 nd1 = data.frame(DBH=seq(0.1,40,0.1))
 fit1 = (predict(htmod,nd1))
-points(nd1$DBH,fit1,type="l",lwd=4,lty=1)
+points(nd1$DBH,fit1,type="l",lwd=2,lty=4)
+
+plot(ABCO$DBH,ABCO$Height,ylim=c(0,150),cex=2,xlim=c(10,50))
+htmod2 = nls(Height~a*exp(b/DBH) ,trace=T,
+            start=list(b=-18.5526,a=200.5660),
+            data=ABCO)
+fit2 = (predict(htmod2,nd1))
+points(nd1$DBH,fit2,type="l",lwd=4,lty=3)
+
+plot(ABCO$DBH,ABCO$Height,ylim=c(0,150),cex=2,xlim=c(10,50))
+htmod3 = nls(Height~a*(DBH^b) ,trace=T,
+             start=list(b=0.819204,a=6.638410),
+             data=ABCO)
+fit3 = (predict(htmod3,nd1))
+points(nd1$DBH,fit3,type="l",lwd=4,lty=3)
+
+summary(htmod1)
+summary(htmod2)
+summary(htmod3)
+
 #ABCO Height = DBH/(0.2148+(0.002133*DBH))
 ABCO["pred.ht"] <- ABCO$DBH/(0.2148+(0.002133*ABCO$DBH))
 
