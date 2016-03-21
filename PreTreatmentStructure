@@ -1,4 +1,4 @@
-# 2.10.2016
+# 3.21.2016
 # Pre-treatment data from C. Johnson, MSU
 # Premer, M.I.
 
@@ -6,7 +6,7 @@ library(dplyr)
 library(readxl)
 library(ggplot2)
 
-#pretreatment and post-treatment structural diversity index
+#pretreatment data
 
 dataset <- read_excel("C:/Users/Mike/Desktop/CA_TreeList.xlsx",sheet="Sheet1")
 ggplot(aes(x=DBH,y=Height),data=dataset)+
