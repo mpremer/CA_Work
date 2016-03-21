@@ -9,92 +9,51 @@ library(ggplot2)
 #pretreatment and post-treatment structural diversity index
 
 dataset <- read_excel("C:/Users/Mike/Desktop/CA_TreeList.xlsx",sheet="Sheet1")
-names(dataset)
-
 ggplot(aes(x=DBH,y=Height),data=dataset)+
   geom_point(stat="identity",size=I(4))+
   facet_wrap(~Species)+
   ylim(0,160)+
   stat_smooth(aes(group=1),method="gam",formula=y~s(x,k=1),se=TRUE,size=2)
-  
-summary <- dataset %>%
+
+ABCO <- filter(dataset,Species=="ABCO"
+ABCO["pred.ht"] <- 200.566*exp(-18.523/ABCO$DBH)
+ABCO["pred.ht"] <- round(ABCO$pred.ht,digits=2
+CADE <- filter(dataset, Species=="CADE")
+CADE["pred.ht"] <- 167.0324*exp(-18.33197/CADE$DBH)
+CADE["pred.ht"] <- round(CADE$pred.ht,digits=2)
+PILA <- filter(dataset, Species=="PILA")
+PILA["pred.ht"] <- 201.54603*exp(-20.2708/PILA$DBH
+PIPO <- filter(dataset, Species=="PIPO")
+PIPO["pred.ht"] <- 242.95259*exp(-23.72071/PIPO$DBH)
+PIJE <- filter(dataset, Species=="PIJE")
+PIJE["pred.ht"] <- 7.9186650*PIJE$DBH^0.7226995
+
+dataset.update <- rbind(ABCO,CADE,PIJE,PILA,PIPO)
+dataset.update$Height[is.na(dataset.update$Height)] <- 0
+dataset.update["final.height"] <- ifelse(dataset.update$Height>1,dataset.update$Height,
+                                         ifelse(dataset.update$Height<1,dataset.update$pred.ht,0))
+
+summary <- dataset.update %>%
   mutate(dbh.class = 2*as.integer((DBH+(2/2))/2)) %>%
   mutate(basal.area = 0.005454*(DBH^2))%>%
   group_by(Treatment,Treat_ID,Species,dbh.class)%>% # to get stand level, just drop out the 'Species' and 'DBH' class from this line
   summarize(density = sum(tree.factor),
-            ba.acre = sum(basal.area*density))
+            ba.acre = sum(basal.area*density),
+            height = mean(final.height))
 
-# summary will give you a basal area and tpa table that can be written out to a .csv with:
-write.csv(summary,"C:/Users/Mike/Desktop/CA_Forest_Structure.csv") # specify where you want the output
+g <- group_by(dataset.update,Treat_ID) %>%
+  summarize(n.trees=length(TreeID))
+summary <- left_join(summary,g)
 
 sum <- summary %>%
-  group_by(Treatment,Treat_ID)%>%
+  mutate(d2 = DBH^2) %>%
+  group_by(Treatment,Treat_ID,n.trees)%>%
   summarize(tot.ba = sum(ba.acre),
-            tot.tpa = sum(density))
+            tot.tpa = sum(density),
+            d2 = sum(d2))
+sum["QMD"] <- sqrt((sum$d2)/sum$n.trees)
+sum <- sum[,-6]
 
-# Require species specific Height models to assign a STVI index (Strcuture index based on variance)
-# PIJE not recorded for height, probably need to supplement with FIA data
-
-par(mfrow=c(1,3))
-ABCO <- filter(dataset,Species=="ABCO") 
-plot(ABCO$DBH,ABCO$Height,ylim=c(0,150),cex=2,xlim=c(10,50))
-htmod1 = nls(Height~DBH/(a+(b*DBH)) ,trace=T,
-              start=list(b=0.002132819,a=0.21475200),
-              data=ABCO)
-nd1 = data.frame(DBH=seq(0.1,40,0.1))
-fit1 = (predict(htmod,nd1))
-points(nd1$DBH,fit1,type="l",lwd=2,lty=4)
-
-plot(ABCO$DBH,ABCO$Height,ylim=c(0,150),cex=2,xlim=c(10,50))
-htmod2 = nls(Height~a*exp(b/DBH) ,trace=T,
-            start=list(b=-18.5526,a=200.5660),
-            data=ABCO)
-fit2 = (predict(htmod2,nd1))
-points(nd1$DBH,fit2,type="l",lwd=4,lty=3)
-
-plot(ABCO$DBH,ABCO$Height,ylim=c(0,150),cex=2,xlim=c(10,50))
-htmod3 = nls(Height~a*(DBH^b) ,trace=T,
-             start=list(b=0.819204,a=6.638410),
-             data=ABCO)
-fit3 = (predict(htmod3,nd1))
-points(nd1$DBH,fit3,type="l",lwd=4,lty=3)
-
-summary(htmod1)
-summary(htmod2)
-summary(htmod3)
-
-#ABCO Height = DBH/(0.2148+(0.002133*DBH))
-ABCO["pred.ht"] <- ABCO$DBH/(0.2148+(0.002133*ABCO$DBH))
-
-CADE <- filter(dataset, Species=="CADE")
-plot(CADE$DBH,CADE$Height,ylim=c(0,150),xlim=c(0,40))
-htmod = nls(Height~DBH/(a+(b*DBH)) ,trace=T,
-            start=list(b=0.000779,a=0.29304),
-            data=CADE)
-nd1 = data.frame(DBH=seq(0.1,40,0.1))
-fit1 = (predict(htmod,nd1))
-points(nd1$DBH,fit1,type="l",lwd=4,lty=1)
-#CADE Height = DBH/(0.29304+(0.000779*DBH))
-
-PILA <- filter(dataset, Species=="PILA")
-plot(PILA$DBH,PILA$Height,ylim=c(0,180),xlim=c(0,80))
-htmod = nls(Height~DBH/(a+(b*DBH)) ,trace=T,
-            start=list(b=0.002733257,a=0.220462979),
-            data=PILA)
-nd1 = data.frame(DBH=seq(0.1,80,0.1))
-fit1 = (predict(htmod,nd1))
-points(nd1$DBH,fit1,type="l",lwd=4,lty=1)
-# PILA Height = DBH/(0.220462+(0.002733*DBH))
-
-PIPO <- filter(dataset, Species=="PIPO")
-plot(PIPO$DBH,PIPO$Height,ylim=c(0,200),xlim=c(0,100))
-htmod = nls(Height~DBH/(a+(b*DBH)) ,trace=T,
-            start=list(b=0.00182,a=0.223581322),
-            data=PIPO)
-nd1 = data.frame(DBH=seq(0.1,80,0.1))
-fit1 = (predict(htmod,nd1))
-points(nd1$DBH,fit1,type="l",lwd=4,lty=1)
-#PIPO Height = DBH/(0.22358+(0.001820483*DBH))
-
-# PIJE Diameter to Height relationship taken from Lassen National Forest FIA data
-# PIJE Height = DBH/(0.19560271+(0.00433*DBH))
+write.csv(dataset.update, "C:/Users/Mike/Desktop/CA_pretreatment_raw.csv")
+write.csv(summary,"C:/Users/Mike/Desktop/CA_Forest_Structure.csv") # specify where you want the output
+write.csv(sum,"C:/Users/Mike/Desktop/CA_plot_summary.csv") # specify where you want the output
