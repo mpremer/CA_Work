@@ -1,0 +1,111 @@
+# USFS - MSU Ruffa Timber Sale 
+# Pre Harvest Data collected 2014-2015
+# Clean, organize, and generate compeition indices across all plots
+# Script Draft 6 October 2016
+# Premer, M.I.
+
+dev.off
+rm(list=ls())
+library(dplyr)
+library(readxl)
+library(ggplot2)
+library(reshape2)
+library(lattice)
+library(nlme)
+pre.harvest <- read_excel("C:/Users/Mike/Desktop/MSU/Ruffa_Sale/CA_TreeList.xlsx",sheet="Sheet1")
+pre.harvest <- filter(pre.harvest, Status=="L")
+summary <- pre.harvest %>%
+  mutate(dbh.class = 2*as.integer((DBH.in+(2/2))/2)) %>%
+  mutate(basal.area = 0.005454*(DBH.in^2))%>%
+  group_by(Treatment,Treat_ID,Species,DBH.in,dbh.class)%>% # to get stand level, just drop out the 'Species' and 'DBH' class from this line
+  summarize(density = sum(tree.factor),
+            ba.acre = sum(basal.area*density),
+            height = mean(Height.ft))
+g <- group_by(pre.harvest,Treat_ID) %>%
+  summarize(n.trees=length(TreeID))
+set.qmd <- left_join(summary,g)
+sum <- set.qmd %>%
+  mutate(d2 = DBH.in^2) %>%
+  group_by(Treatment,Treat_ID,n.trees)%>%
+  summarize(tot.ba = sum(ba.acre),
+            tot.tpa = sum(density),
+            d2 = sum(d2))
+sum["QMD"] <- sqrt((sum$d2)/sum$n.trees)
+pre.harvest <- merge(x=pre.harvest,y=sum[, c("Treat_ID","QMD","tot.tpa")], by="Treat_ID",all.x=TRUE)
+pre.harvest["SDI"] <- pre.harvest$tot.tpa*(pre.harvest$QMD/10)^1.605
+pre.harvest["CW"] <- (pre.harvest$CrownRDNS+pre.harvest$CrownRDEW)/2
+plot(pre.harvest$Height.ft,pre.harvest$CW,ylim=c(0,100),xlim=c(0,200))
+fit.cw <- lme(CW~Height.ft*Species, data=pre.harvest,random=~1|Treat_ID,method="REML",na.action="na.omit")
+summary(fit.cw) # PILA needs it's own DBH to crown predictor
+PILA <- filter(pre.harvest, Species=="PILA")
+plot(PILA$DBH.in,PILA$CW,xlim=c(0,100),ylim=c(0,100))
+PILACWMOD = nls(CW~(a*b^DBH.in),
+              trace=T,start=list(b=1.024506,a=13.520613),data=PILA)
+nd <- data.frame(DBH.in=seq(0.1,75,0.1))
+PILACWFIT <- predict(PILACWMOD,nd)
+points(nd$DBH.in,PILACWFIT,type="l",lwd=1,lty=5)
+Gen.CW <- filter(pre.harvest,Species=="PIPO"|Species=="CADE"|Species=="ABCO")
+GENCWMOD2 <- nls(CW~(a*b^DBH.in),
+                 trace=T,start=list(b=1.022702,a=13.217467),data=Gen.CW)
+GENCWFIT2 <- predict(GENCWMOD2, nd)
+points(nd$DBH.in,GENCWFIT2,type="l",lwd=2,lty=3) # overall better fit
+pre.harvest["Rivas"] <- (3.14*(pre.harvest$Final.CW.m^2/4))/(pre.harvest$Plot.size.m)
+focal <- filter(pre.harvest, GROUP=="Focal")
+list.focal <- focal%>%
+  group_by(Treat_ID,Species,DBH.cm)%>%
+  summarize(focal.dbh = mean(DBH.cm),
+            focal.height = mean(Final.Height.m),
+            focal.area = ((Final.CW.m/2)^2)*3.14,
+            focal.radius = (Final.CW.m/2))
+pre.harvest <- left_join(pre.harvest,list.focal,by="Treat_ID")
+pre.harvest["Heygi"] <- pre.harvest$DBH.cm.x/(pre.harvest$focal.dbh*pre.harvest$Distance.m)
+pre.harvest["Braathe"] <- pre.harvest$Final.Height.m/(pre.harvest$focal.height*pre.harvest$Distance.m)
+pre.harvest["Rouvinen.1"] <- atan(pre.harvest$DBH.cm.x/pre.harvest$Distance.m)
+pre.harvest["Rouvinen.2"] <- (pre.harvest$DBH.cm.x/pre.harvest$focal.dbh)*atan(pre.harvest$DBH.cm.x/pre.harvest$Distance.m)
+pre.harvest["Rouvinen.3"] <- atan((pre.harvest$Final.Height.m)/(pre.harvest$Distance.m))
+pre.harvest["Rouvinen.4"] <- (pre.harvest$Final.Height.m/pre.harvest$focal.height)*atan(pre.harvest$Final.Height.m/pre.harvest$Distance.m)
+pre.harvest["CW.radius.m"] <- pre.harvest$Final.CW.m/2
+pre.harvest["competitor.area.m"] <- (pre.harvest$CW.radius.m^2)*3.14
+pre.harvest["overlap.m"] <- (pre.harvest$CW.radius.m^2)*acos((pre.harvest$Distance.m^2+pre.harvest$CW.radius.m^2-
+                                                            pre.harvest$focal.radius^2)/
+                                                           (2*pre.harvest$Distance.m*pre.harvest$CW.radius.m))+
+  (pre.harvest$focal.radius^2)*acos((pre.harvest$Distance.m^2+pre.harvest$focal.radius^2-pre.harvest$CW.radius.m^2)/
+                                      (2*pre.harvest$Distance.m*pre.harvest$focal.radius))-
+  0.5*sqrt((-pre.harvest$Distance.m+pre.harvest$CW.radius.m+pre.harvest$focal.radius)*
+             (pre.harvest$Distance.m+pre.harvest$CW.radius.m-pre.harvest$focal.radius)*
+             (pre.harvest$Distance.m-pre.harvest$CW.radius.m+pre.harvest$focal.radius)*
+             (pre.harvest$Distance.m+pre.harvest$CW.radius.m+pre.harvest$focal.radius))
+pre.harvest["bella.1"] <- (pre.harvest$overlap.m*pre.harvest$DBH.cm.x)/(pre.harvest$focal.area*pre.harvest$DBH.cm.x)
+pre.harvest["gerrard"] <- (pre.harvest$overlap.m/pre.harvest$focal.area)
+pre.harvest["Martin.Ek"] <- (pre.harvest$DBH.cm.x/pre.harvest$focal.dbh)*
+  exp(-16*pre.harvest$Distance.m/(pre.harvest$focal.dbh-pre.harvest$DBH.cm.x))
+pre.harvest["TD"] <- (10000/pre.harvest$Plot.size.m)+((10000/pre.harvest$Plot.size.m)*
+                                                        (pre.harvest$overlap.m/pre.harvest$focal.area))
+pre.harvest["SOD"] <- ((pre.harvest$focal.dbh)*(10000/pre.harvest$Plot.size.m))+((pre.harvest$DBH.cm.x)*
+                                                                                   (10000/pre.harvest$Plot.size.m)*
+                                                                                   (pre.harvest$overlap.m/pre.harvest$focal.area))
+pre.harvest["CCF"] <- ((((pre.harvest$focal.radius*2)^2)*(pi/400))*(10000/pre.harvest$Plot.size.m))+
+  ((((pre.harvest$Final.CW.m)^2)*(pi/400)))*((10000/pre.harvest$Plot.size.m)*
+                                               (pre.harvest$overlap.m/pre.harvest$focal.area))
+pre.harvest["BA.CI"] <- (((((pre.harvest$focal.dbh/1000)^2))*(pi/4))*(10000/pre.harvest$Plot.size.m))+
+  ((((pre.harvest$DBH.cm.x/1000)^2)*(pi/4)))*((10000/pre.harvest$Plot.size.m)*
+                                                (pre.harvest$overlap.m/pre.harvest$focal.area))
+pre.harvest["FG"] <- ifelse(pre.harvest$DBH.cm.x>pre.harvest$focal.dbh,1,
+                                         ifelse(pre.harvest$DBH.cm.x<pre.harvest$focal.dbh,0,0))
+pre.harvest["BAL"] <- ((pre.harvest$DBH.cm.x/1000)^2)*(pi/4)*(10000/pre.harvest$Plot.size.m)*
+  (pre.harvest$overlap.m/pre.harvest$focal.area)*pre.harvest$FG
+pre.harvest["Tome.Burkhart"] <- ifelse(pre.harvest$FG>0,(pre.harvest$DBH.cm.x/pre.harvest$focal.dbh)*(1/pre.harvest$Distance.m),
+                                       ifelse(pre.harvest$FG<1,-(pre.harvest$focal.dbh/pre.harvest$DBH.cm.x)*(1/pre.harvest$Distance.m),0))
+pre.harvest['bella.2'] <- (pre.harvest$overlap.m/pre.harvest$focal.area)*((pre.harvest$DBH.cm.x/pre.harvest$focal.dbh)^1)
+pre.harvest["monserud"] <- (pre.harvest$overlap.m/pre.harvest$focal.area)*((pre.harvest$Final.Height.m*
+                                                                             pre.harvest$Final.CW.m)/(pre.harvest$focal.height*
+                                                                             (pre.harvest$focal.radius*2)))
+
+comp = filter(pre.harvest, GROUP=="Retain"|GROUP=="Competitor"|GROUP=="Remove")
+comps <- group_by(comp,Treat_ID)%>%
+  summarize(tree.count = length(TreeID),
+            diameters = sum(DBH.cm.x),
+            distances = sum(Distance.m))
+pre.harvest <- left_join(pre.harvest,comps)
+pre.harvest["alemdag"] <- ((pre.harvest$focal.dbh*pre.harvest$Distance.m)/(pre.harvest$focal.dbh*pre.harvest$DBH.cm.x))^2*
+  ((pre.harvest$DBH.cm.x/pre.harvest$Distance.m)/(pre.harvest$diameters/pre.harvest$distances))
