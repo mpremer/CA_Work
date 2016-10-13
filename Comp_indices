@@ -17,7 +17,7 @@ pre.harvest <- filter(pre.harvest, Status=="L")
 summary <- pre.harvest %>%
   mutate(dbh.class = 2*as.integer((DBH.in+(2/2))/2)) %>%
   mutate(basal.area = 0.005454*(DBH.in^2))%>%
-  group_by(Treatment,Treat_ID,Species,DBH.in,dbh.class)%>% # to get stand level, just drop out the 'Species' and 'DBH' class from this line
+  group_by(Treatment,Treat_ID,Species,DBH.in,dbh.class)%>% 
   summarize(density = sum(tree.factor),
             ba.acre = sum(basal.area*density),
             height = mean(Height.ft))
@@ -100,7 +100,6 @@ pre.harvest['bella.2'] <- (pre.harvest$overlap.m/pre.harvest$focal.area)*((pre.h
 pre.harvest["monserud"] <- (pre.harvest$overlap.m/pre.harvest$focal.area)*((pre.harvest$Final.Height.m*
                                                                              pre.harvest$Final.CW.m)/(pre.harvest$focal.height*
                                                                              (pre.harvest$focal.radius*2)))
-
 comp = filter(pre.harvest, GROUP=="Retain"|GROUP=="Competitor"|GROUP=="Remove")
 comps <- group_by(comp,Treat_ID)%>%
   summarize(tree.count = length(TreeID),
