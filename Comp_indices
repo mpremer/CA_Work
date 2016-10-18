@@ -12,12 +12,13 @@ library(ggplot2)
 library(reshape2)
 library(lattice)
 library(nlme)
-pre.harvest <- read_excel("C:/Users/Mike/Desktop/MSU/Ruffa_Sale/CA_TreeList.xlsx",sheet="Sheet1")
+folderPath <- "C:/Users/Mike/Desktop/MSU/Ruffa_Sale/"
+pre.harvest <- read_excel(paste0(folderPath, "CA_TreeList.xlsx"))
 pre.harvest <- filter(pre.harvest, Status=="L")
 summary <- pre.harvest %>%
   mutate(dbh.class = 2*as.integer((DBH.in+(2/2))/2)) %>%
   mutate(basal.area = 0.005454*(DBH.in^2))%>%
-  group_by(Treatment,Treat_ID,Species,DBH.in,dbh.class)%>% 
+  group_by(Treatment,Treat_ID,Species,DBH.in,dbh.class)%>% # to get stand level, just drop out the 'Species' and 'DBH' class from this line
   summarize(density = sum(tree.factor),
             ba.acre = sum(basal.area*density),
             height = mean(Height.ft))
@@ -48,16 +49,17 @@ Gen.CW <- filter(pre.harvest,Species=="PIPO"|Species=="CADE"|Species=="ABCO")
 GENCWMOD2 <- nls(CW~(a*b^DBH.in),
                  trace=T,start=list(b=1.022702,a=13.217467),data=Gen.CW)
 GENCWFIT2 <- predict(GENCWMOD2, nd)
-points(nd$DBH.in,GENCWFIT2,type="l",lwd=2,lty=3) # overall better fit
-pre.harvest["Rivas"] <- (3.14*(pre.harvest$Final.CW.m^2/4))/(pre.harvest$Plot.size.m)
+points(nd$DBH.in,GENCWFIT2,type="l",lwd=3,lty=3) # overall better fit
 focal <- filter(pre.harvest, GROUP=="Focal")
 list.focal <- focal%>%
-  group_by(Treat_ID,Species,DBH.cm)%>%
+  mutate(focal.species = Species)%>%
+  group_by(Treat_ID,focal.species)%>%
   summarize(focal.dbh = mean(DBH.cm),
             focal.height = mean(Final.Height.m),
             focal.area = ((Final.CW.m/2)^2)*3.14,
             focal.radius = (Final.CW.m/2))
 pre.harvest <- left_join(pre.harvest,list.focal,by="Treat_ID")
+pre.harvest["Rivas"] <- (3.14*(pre.harvest$Final.CW.m^2/4))/(pre.harvest$Plot.size.m)
 pre.harvest["Heygi"] <- pre.harvest$DBH.cm.x/(pre.harvest$focal.dbh*pre.harvest$Distance.m)
 pre.harvest["Braathe"] <- pre.harvest$Final.Height.m/(pre.harvest$focal.height*pre.harvest$Distance.m)
 pre.harvest["Rouvinen.1"] <- atan(pre.harvest$DBH.cm.x/pre.harvest$Distance.m)
@@ -103,8 +105,51 @@ pre.harvest["monserud"] <- (pre.harvest$overlap.m/pre.harvest$focal.area)*((pre.
 comp = filter(pre.harvest, GROUP=="Retain"|GROUP=="Competitor"|GROUP=="Remove")
 comps <- group_by(comp,Treat_ID)%>%
   summarize(tree.count = length(TreeID),
-            diameters = sum(DBH.cm.x),
+            diameters = sum(DBH.cm),
             distances = sum(Distance.m))
 pre.harvest <- left_join(pre.harvest,comps)
 pre.harvest["alemdag"] <- ((pre.harvest$focal.dbh*pre.harvest$Distance.m)/(pre.harvest$focal.dbh*pre.harvest$DBH.cm.x))^2*
   ((pre.harvest$DBH.cm.x/pre.harvest$Distance.m)/(pre.harvest$diameters/pre.harvest$distances))
+pre.harvest[is.na(pre.harvest)] <- 0
+competition.summary <- pre.harvest %>%
+  filter(GROUP=="Retain"|GROUP=="Competitor"|GROUP=="Remove")%>%
+  group_by(Treat_ID, TreeID,Species,DBH.cm,focal.species,focal.dbh)%>%
+  summarize(LORIMER = sum(Lorimer),
+            STAND.DENSITY.INDEX = sum(SDI)/1000,
+            RIVAS = sum(Rivas),
+            HEYGI = sum(Heygi),
+            BRAATHE = sum(Braathe),
+            ROUVINEN.1 = sum(Rouvinen.1)/10,
+            ROUVINEN.2 = sum(Rouvinen.2)/10,
+            ROUVINEN.3 = sum(Rouvinen.3)/10,
+            ROUVINEN.4 = sum(Rouvinen.4)/10,
+            BELLA.1 = sum(bella.1),
+            BELLA.2 = sum(bella.2),
+            GERRARD = sum(gerrard),
+            MARTIN.EK = sum(Martin.Ek),
+            TREE.DENSITY = sum(TD)/100,
+            SUM.DIAMETERS =sum(SOD)/10000,
+            CROWN.COMP.FACTOR = sum(CCF)/100,
+            BASAL.COMP = sum(BA.CI),
+            BA.L = sum(BAL),
+            TOME.BURKHART = sum(Tome.Burkhart),
+            MONSERUD = sum(monserud),
+            ALEMDAG = sum(alemdag))
+molten <- melt(as.data.frame(competition.summary),id=c("Treat_ID","TreeID","Species","DBH.cm","focal.species","focal.dbh"))
+molten <- rename(molten, comp.index = variable)
+molten$Species <- as.factor(molten$Species)
+molten$focal.species <- as.factor(molten$focal.species)
+index <- as.data.frame(unique(molten$comp.index))
+for (i in index){
+  comp.index <- index[i,]
+  lme_cer <- lme(value~focal.species*focal.dbh*Species,random=~1|
+                   Treat_ID,method="REML",data=molten)
+  print(summary(lme_cer)$tTable)
+}
+comp.stats <- molten %>%
+  group_by(variable)%>%
+  summarize(mean.index.value = mean(value),
+            variance.index.value = var(value))
+comp.frame <- molten%>%
+  group_by(variable,Treat_ID)%>%
+  summarize(mean.index.value = mean(value))
