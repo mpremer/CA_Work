@@ -32,23 +32,6 @@ sum <- set.qmd %>%
 sum["QMD"] <- sqrt((sum$d2)/sum$n.trees)
 pre.harvest <- merge(x=pre.harvest,y=sum[, c("Treat_ID","QMD","tot.tpa")], by="Treat_ID",all.x=TRUE)
 pre.harvest["SDI"] <- pre.harvest$tot.tpa*(pre.harvest$QMD/10)^1.605
-pre.harvest["DBH.class.cm"] <- 5*as.integer((pre.harvest$DBH.cm+(5/2))/5)
-pre.harvest["CW"] <- (pre.harvest$CrownRDNS+pre.harvest$CrownRDEW)/2
-plot(pre.harvest$Height.ft,pre.harvest$CW,ylim=c(0,100),xlim=c(0,200))
-fit.cw <- lme(CW~Height.ft*Species, data=pre.harvest,random=~1|Treat_ID,method="REML",na.action="na.omit")
-summary(fit.cw) # PILA needs it's own DBH to crown predictor
-PILA <- filter(pre.harvest, Species=="PILA")
-plot(PILA$DBH.in,PILA$CW,xlim=c(0,100),ylim=c(0,100))
-PILACWMOD = nls(CW~(a*b^DBH.in),
-                trace=T,start=list(b=1.024506,a=13.520613),data=PILA)
-nd <- data.frame(DBH.in=seq(0.1,75,0.1))
-PILACWFIT <- predict(PILACWMOD,nd)
-points(nd$DBH.in,PILACWFIT,type="l",lwd=1,lty=5)
-Gen.CW <- filter(pre.harvest,Species=="PIPO"|Species=="CADE"|Species=="ABCO")
-GENCWMOD2 <- nls(CW~(a*b^DBH.in),
-                 trace=T,start=list(b=1.022702,a=13.217467),data=Gen.CW)
-GENCWFIT2 <- predict(GENCWMOD2, nd)
-points(nd$DBH.in,GENCWFIT2,type="l",lwd=3,lty=3) # overall better fit
 focal <- filter(pre.harvest, GROUP=="Focal")
 list.focal <- focal%>%
   mutate(focal.species = Species)%>%
