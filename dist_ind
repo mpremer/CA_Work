@@ -39,46 +39,21 @@ lines(density(rivas$value),lwd=2,lty=4)
 legend(0.15,15,c("Raw Competition Value","Weibull distribution"),lty=c(4,1),col=c("black","black"),lwd=c(1.5,1.5),cex=0.75)
 #######Harvest simulations
 #Krajicek
-Krajicek.post.default <- filter(rivas, GROUP=="Competitor"|GROUP=="Retain")# Currently used by USFS
-Krajicek.post.default <- rbind(rivas.post.default,focal.set)
-class.breakdown <- group_by(Krajicek.post.default,Treat_ID,DBH.class.cm) %>%
-  summarize(n.classes=length(DBH.class.cm))
-total.classes <- class.breakdown %>%
-  group_by(Treat_ID)%>%
-  summarize(class.count = sum(n.classes))
-set.shannon.structure <- left_join(class.breakdown,total.classes)
-set.shannon.structure["H.dbh"] <- (set.shannon.structure$n.classes/set.shannon.structure$class.count)*
-  log(set.shannon.structure$class.count)
-shannon.structure <- set.shannon.structure%>%
-  group_by(Treat_ID)%>%
-  summarize(shannons.struc = sum(H.dbh))
-species.breakdown <- group_by(rivas.post.default,Treat_ID,Species)%>%
-  summarize(n.species = length(Species))
-total.species <- group_by(rivas.post.default,Treat_ID)%>%
-  summarize(species.count = max(TreeID))
-set.shannon.species <- left_join(species.breakdown,total.species)
-set.shannon.species["H.species"] <- (set.shannon.species$n.species/set.shannon.species$species.count)*
-  log(set.shannon.species$species.count)
-shannon.species <- set.shannon.species%>%
-  group_by(Treat_ID)%>%
-  summarize(shannons.spec = sum(H.species))
-default.shannon <- left_join(shannon.species,shannon.structure)%>%
-  mutate(post.hoc.shannon = (shannons.spec+shannons.struc)/2)
-default.shannon["index"] <- "default"
-rivas.post.default["simulation"] <- "default"
-
-quantile(rivas.weibull,c(.33,.66,.99))
-Krajicek["upper.thin"] <- ifelse(rivas$value>0.04388974,"cut",
-                              ifelse(rivas$value<0.04388974,"retain",0))
-Krajicek.post.upper <- filter(rivas, upper.thin=="retain")
-Krajicek.post.upper <- rivas.post.upper[,-14]
-Krajicek.post.upper <- rbind(rivas.post.upper,focal.set)
+Krajicek.post.default <- filter(Krajicek, GROUP=="Competitor"|GROUP=="Retain")# Currently used by USFS
+Krajicek.post.default <- rbind(Krajicek.post.default,focal.set)
+Krajicek.post.default["simulation"] <- "default"
+quantile(Krajicek.weibull,c(.33,.66,.99))
+Krajicek["upper.thin"] <- ifelse(Krajicek$value>0.04388974,"cut",
+                              ifelse(Krajicek$value<0.04388974,"retain",0))
+Krajicek.post.upper <- filter(Krajicek, upper.thin=="retain")
+Krajicek.post.upper <- Krajicek.post.upper[,-14]
+Krajicek.post.upper <- rbind(Krajicek.post.upper,focal.set)
 Krajicek.post.upper["simulation"] <- "upper"
-quantile(rivas.weibull,c(0.16,0.84))
+quantile(Krajicek.weibull,c(0.16,0.84))
 Krajicek["intermediate"] <- ifelse(Krajicek$value>0.02504998,"cut",
                                 ifelse(rivas$value>0.1224023,"retain",0))
-Krajicek.post.modified <- filter(rivas,intermediate==0|intermediate=="retain")
-Krajicek.post.modified <- rbind(rivas.post.modified,focal.set)
+Krajicek.post.modified <- filter(Krajicek,intermediate==0|intermediate=="retain")
+Krajicek.post.modified <- rbind(Krajicek.post.modified,focal.set)
 Krajicek.post.modified["simulation"] <- "modified"
 myvars <- c("Treat_ID","TreeID","Species","DBH.cm","DBH.class.cm","Final.Height.m","focal.species","focal.dbh",
             "post.shann","tree.factor","variable","value","simulation")
@@ -128,16 +103,6 @@ bCI.tab(boo01)
 simulation.summary <- post.cut.breakdown%>%
   group_by(simulation,DBH.class.cm)%>%
   summarize(trees = mean(trees))
-cols <- c(default="gray40",upper="gray60",modified="gray80")
-theme_set(theme_bw(15))
-rivas.dd.plot <- ggplot(simulation.summary,aes(DBH.class.cm,trees))+
-  stat_smooth(aes(linetype=simulation),method=rlm,formula=y~ns(x,2),
-              se=TRUE,size=1,colour="black",fill="grey60")+
-  labs(x = '',y=(bquote('Trees'~'ha'~""^{-1})))+
-  scale_colour_manual(values=cols)+
-  xlim(20,120)+
-  ylim(0,75)+
-  theme(legend.position="none")
 class.breakdown <- group_by(rivas.post.cut,Treat_ID,DBH.class.cm,simulation) %>%
   summarize(n.classes=length(DBH.class.cm))
 total.classes <- class.breakdown %>%
