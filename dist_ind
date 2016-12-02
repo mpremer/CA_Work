@@ -1,0 +1,183 @@
+# Distance independent indices
+
+dev.off
+rm(list=ls())
+library(boot)
+library(plyr)
+library(dplyr)
+library(readxl)
+library(ggplot2)
+library(reshape)
+library(reshape2)
+library(lattice)
+library(lme4)
+library(nlme)
+library(fitdistrplus)
+library(xlsx)
+library(gridExtra)
+library(splines)
+library(devtools)
+
+pre.harvest <- read_excel("C:/Users/Mike/Desktop/mike/research/publications/PSW_Competition_Index/Harvest_simulations/raw/CIs/pre.harvest.xlsx")
+focal.set <- filter(pre.harvest, GROUP=="Focal")
+focal.vars <- c("Treat_ID","TreeID","Species","DBH.cm","Final.Height.m","DBH.class.cm","focal.species","focal.dbh","tree.factor","GROUP")
+focal.set <- focal.set[focal.vars]
+focal.set["post.shann"] <- 0
+focal.set["variable"] <- as.factor(1)
+focal.set["value"] <- 0
+#######
+molten <- read_excel("C:/Users/Mike/Desktop/mike/research/publications/PSW_Competition_Index/Harvest_simulations/raw/CIs/molten.xlsx")
+rivas <- filter(molten, variable =="RIVAS")
+
+rivas.weibull <- fitdist(rivas$value, "weibull")
+rivas.params <- fitdistr(rivas$value, 'weibull')
+rivas.Shape <- rivas.params[[1]][1]
+rivas.Scale <- rivas.params[[1]][2]
+par(mfrow=c(1,1))
+plot(density(rweibull(1000,shape=rivas.Shape,scale=rivas.Scale)),ylim=c(0,15),lty=1,lwd=2,xlab="CI",
+     main="rivas et al., 2005",cex.axis=1.5,cex.lab=1.5)
+lines(density(rivas$value),lwd=2,lty=4)
+legend(0.15,15,c("Raw Competition Value","Weibull distribution"),lty=c(4,1),col=c("black","black"),lwd=c(1.5,1.5),cex=0.75)
+
+#Harvest simulations
+#rivas
+rivas.post.default <- filter(rivas, GROUP=="Competitor"|GROUP=="Retain")# Currently used by USFS
+rivas.post.default <- rbind(rivas.post.default,focal.set)
+
+class.breakdown <- group_by(rivas.post.default,Treat_ID,DBH.class.cm) %>%
+  summarize(n.classes=length(DBH.class.cm))
+total.classes <- class.breakdown %>%
+  group_by(Treat_ID)%>%
+  summarize(class.count = sum(n.classes))
+set.shannon.structure <- left_join(class.breakdown,total.classes)
+set.shannon.structure["H.dbh"] <- (set.shannon.structure$n.classes/set.shannon.structure$class.count)*
+  log(set.shannon.structure$class.count)
+shannon.structure <- set.shannon.structure%>%
+  group_by(Treat_ID)%>%
+  summarize(shannons.struc = sum(H.dbh))
+species.breakdown <- group_by(rivas.post.default,Treat_ID,Species)%>%
+  summarize(n.species = length(Species))
+total.species <- group_by(rivas.post.default,Treat_ID)%>%
+  summarize(species.count = max(TreeID))
+set.shannon.species <- left_join(species.breakdown,total.species)
+set.shannon.species["H.species"] <- (set.shannon.species$n.species/set.shannon.species$species.count)*
+  log(set.shannon.species$species.count)
+shannon.species <- set.shannon.species%>%
+  group_by(Treat_ID)%>%
+  summarize(shannons.spec = sum(H.species))
+default.shannon <- left_join(shannon.species,shannon.structure)%>%
+  mutate(post.hoc.shannon = (shannons.spec+shannons.struc)/2)
+default.shannon["index"] <- "default"
+rivas.post.default["simulation"] <- "default"
+
+quantile(rivas.weibull,c(.33,.66,.99))
+rivas["upper.thin"] <- ifelse(rivas$value>0.04388974,"cut",
+                              ifelse(rivas$value<0.04388974,"retain",0))
+rivas.post.upper <- filter(rivas, upper.thin=="retain")
+rivas.post.upper <- rivas.post.upper[,-14]
+rivas.post.upper <- rbind(rivas.post.upper,focal.set)
+rivas.post.upper["simulation"] <- "upper"
+quantile(rivas.weibull,c(0.16,0.84))
+rivas["intermediate"] <- ifelse(rivas$value>0.02504998,"cut",
+                                ifelse(rivas$value>0.1224023,"retain",0))
+rivas.post.modified <- filter(rivas,intermediate==0|intermediate=="retain")
+rivas.post.modified <- rbind(rivas.post.modified,focal.set)
+rivas.post.modified["simulation"] <- "modified"
+myvars <- c("Treat_ID","TreeID","Species","DBH.cm","DBH.class.cm","Final.Height.m","focal.species","focal.dbh",
+            "post.shann","tree.factor","variable","value","simulation")
+rivas.harvest.groups.1 <- rivas.post.default[myvars]
+rivas.harvest.groups.2 <- rivas.post.upper[myvars]
+rivas.harvest.groups.3 <- rivas.post.modified[myvars]
+rivas.post.cut <- rbind(rivas.harvest.groups.1,rivas.harvest.groups.2,rivas.harvest.groups.3)
+
+post.cut.breakdown <- rivas.post.cut%>%
+  group_by(Treat_ID,simulation,DBH.class.cm)%>%
+  summarize(trees = sum(tree.factor))
+#stand.level <- post.cut.breakdown%>%
+#group_by(simulation,DBH.class.cm)%>%
+#summarize(trees = sum(trees)/length(Treat_ID))
+
+rivas.stand.post <- post.cut.breakdown %>%
+  group_by(simulation,DBH.class.cm)%>%
+  summarize(trees = sum(trees)/length(Treat_ID))
+rivas.stand.post["index"] <- "rivas"
+
+post.cut.breakdown <- groupedData(trees~DBH.class.cm|Treat_ID,data=post.cut.breakdown)
+rivas.dd.lme4 <- lmer(trees~simulation*DBH.class.cm+(1|Treat_ID),post.cut.breakdown)
+mySumm <- function(.) { s <- sigma(.)
+c(beta =getME(., "beta"), sigma = s, sig01 = unname(s * getME(., "theta"))) }
+(t0 <- mySumm(rivas.dd.lme4)) 
+system.time( boo01 <- bootMer(rivas.dd.lme4, mySumm, nsim = 1000))
+rivas.boot.coeffs <- as.data.frame(boo01[1])
+names(rivas.boot.coeffs)
+head(as.data.frame(boo01))
+(bCI.1 <- boot.ci(boo01, index=1, type=c("norm", "basic", "perc")))# beta
+(bCI.2  <- boot.ci(boo01, index=2, type=c("norm", "basic", "perc")))
+(bCI.3 <- boot.ci(boo01, index=3, type=c("norm", "basic", "perc"))) # sig01
+bCI.tab <- function(b,ind=length(b$t0), type="perc", conf=0.95) {
+  btab0 <- t(sapply(as.list(seq(ind)),
+                    function(i)
+                      boot.ci(b,index=i,conf=conf, type=type)$percent))
+  btab <- btab0[,4:5]
+  rownames(btab) <- names(b$t0)
+  a <- (1 - conf)/2
+  a <- c(a, 1 - a)
+  pct <- stats:::format.perc(a, 3)
+  colnames(btab) <- pct
+  return(btab)
+}
+bCI.tab(boo01)
+rivas.strapped.ci <- data.frame(bCI.tab(boo01))
+rivas.strapped.ci["lower"] <- rivas.strapped.ci$X2.5..
+rivas.strapped.ci["upper"] <- rivas.strapped.ci$X97.5..
+drops <- c("X2.5..","X97.5..")
+rivas.strapped.ci <- rivas.strapped.ci[, !(names(rivas.strapped.ci)%in%drops)]
+rivas.strapped.ci["params"] <- c("default.int","slope","rivas.mod.int","rivas.upper.int","rivas.mod.slope","rivas.upper.slope","x","y")
+rivas.strapped.ci <- rivas.strapped.ci[-nrow(rivas.strapped.ci),] 
+rivas.strapped.ci <- rivas.strapped.ci[-nrow(rivas.strapped.ci),] 
+rivas.boot.coeffs["params"] <- c("default.int","slope","rivas.mod.int","rivas.upper.int","rivas.mod.slope","rivas.upper.slope","x","y")
+rivas.boot.coeffs <- rivas.boot.coeffs[-nrow(rivas.boot.coeffs),] 
+rivas.boot.coeffs <- rivas.boot.coeffs[-nrow(rivas.boot.coeffs),] 
+rivas.boot.results <- merge(rivas.strapped.ci,rivas.boot.coeffs)
+rivas.boot.results["ci"] <- range(rivas.boot.results$upper-rivas.boot.results$t0)
+rivas.boot.results["Value"] <- rivas.boot.results$t0
+rivas.dd <- rivas.boot.results
+
+simulation.summary <- post.cut.breakdown%>%
+  group_by(simulation,DBH.class.cm)%>%
+  summarize(trees = mean(trees))
+cols <- c(default="gray40",upper="gray60",modified="gray80")
+theme_set(theme_bw(15))
+rivas.dd.plot <- ggplot(simulation.summary,aes(DBH.class.cm,trees))+
+  stat_smooth(aes(linetype=simulation),method=rlm,formula=y~ns(x,2),
+              se=TRUE,size=1,colour="black",fill="grey60")+
+  labs(x = '',y=(bquote('Trees'~'ha'~""^{-1})))+
+  scale_colour_manual(values=cols)+
+  xlim(20,120)+
+  ylim(0,75)+
+  theme(legend.position="none")
+class.breakdown <- group_by(rivas.post.cut,Treat_ID,DBH.class.cm,simulation) %>%
+  summarize(n.classes=length(DBH.class.cm))
+total.classes <- class.breakdown %>%
+  group_by(Treat_ID)%>%
+  summarize(class.count = sum(n.classes))
+set.shannon.structure <- left_join(class.breakdown,total.classes)
+set.shannon.structure["H.dbh"] <- (set.shannon.structure$n.classes/set.shannon.structure$class.count)*
+  log(set.shannon.structure$class.count)
+shannon.structure <- set.shannon.structure%>%
+  group_by(Treat_ID,simulation)%>%
+  summarize(shannons.struc = sum(H.dbh))
+species.breakdown <- group_by(rivas.post.cut,Treat_ID,Species,simulation)%>%
+  summarize(n.species = length(Species))
+total.species <- group_by(rivas.post.cut,Treat_ID)%>%
+  summarize(species.count = max(TreeID))
+set.shannon.species <- left_join(species.breakdown,total.species)
+set.shannon.species["H.species"] <- (set.shannon.species$n.species/set.shannon.species$species.count)*
+  log(set.shannon.species$species.count)
+shannon.species <- set.shannon.species%>%
+  group_by(Treat_ID)%>%
+  summarize(shannons.spec = sum(H.species))
+rivas.shannon <- left_join(shannon.species,shannon.structure)%>%
+  mutate(post.hoc.shannon = (shannons.spec+shannons.struc)/2)
+rivas.shannon["index"] <- "rivas"
+######
