@@ -1,0 +1,87 @@
+# Calculate BAI
+dev.off
+rm(list=ls())
+
+library(dplyr)
+library(readxl)
+library(ggplot2)
+library(reshape)
+library(reshape2)
+library(lattice)
+library(nlme)
+library(xlsx)
+library(gridExtra)
+library(qdap)
+library(stringr)
+
+# These are taken directly from the raw .txt file and modified to R ready summaries
+ABCO <- read_excel("C:/Users/Mike/Desktop/mike/research/publications/PSW_Competition_Index/BAI_CI/raw/Ruffa_BAI_raw.xlsx",sheet="ABCO")
+is.na(ABCO) <- ABCO=="."
+ABCO[is.na(ABCO)] <- 0
+ABCO <- lapply(ABCO,as.numeric)
+ABCO$Year <- as.factor(ABCO$Year)
+ABCO.melt <- melt(as.data.frame(ABCO),id=c("Year"))
+ABCO.melt["Species"] <- "ABCO"
+
+CADE <- read_excel("C:/Users/Mike/Desktop/mike/research/publications/PSW_Competition_Index/BAI_CI/raw/Ruffa_BAI_raw.xlsx",sheet="CADE")
+is.na(CADE) <- CADE=="."
+CADE[is.na(CADE)] <- 0
+CADE <- lapply(CADE,as.numeric)
+CADE$Year <- as.factor(CADE$Year)
+CADE.melt <- melt(as.data.frame(CADE),id=c("Year"))
+CADE.melt["Species"] <- "CADE"
+
+PILA <- read_excel("C:/Users/Mike/Desktop/mike/research/publications/PSW_Competition_Index/BAI_CI/raw/Ruffa_BAI_raw.xlsx",sheet="PILA")
+is.na(PILA) <- PILA=="."
+PILA[is.na(PILA)] <- 0
+PILA <- lapply(PILA,as.numeric)
+PILA$Year <- as.factor(PILA$Year)
+PILA.melt <- melt(as.data.frame(PILA),id=c("Year"))
+PILA.melt["Species"] <- "PILA"
+
+PIPO <- read_excel("C:/Users/Mike/Desktop/mike/research/publications/PSW_Competition_Index/BAI_CI/raw/Ruffa_BAI_raw.xlsx",sheet="PIPO")
+is.na(PIPO) <- PIPO=="."
+PIPO[is.na(PIPO)] <- 0
+PIPO <- lapply(PIPO,as.numeric)
+PIPO$Year <- as.factor(PIPO$Year)
+PIPO.melt <- melt(as.data.frame(PIPO),id=c("Year"))
+PIPO.melt["Species"] <- "PIPO"
+
+BAI.raw <- rbind(ABCO.melt,CADE.melt,PILA.melt,PIPO.melt)
+colnames(BAI.raw)[2] <- "Plot"
+colnames(BAI.raw)[3] <- "Growth"
+BAI.raw["Year.filter"] <- as.numeric(levels(BAI.raw$Year))[BAI.raw$Year]
+BAI.raw$Plot <- gsub("X","",BAI.raw$Plot)
+BAI.raw$Plot <- gsub("C","",BAI.raw$Plot)
+
+BAI.raw <- BAI.raw[!BAI.raw$Plot == "c.0..0..0..0..0..0..0..0..0..0..0..0..0..0..0..0..0..0..0..0..", ]
+BAI.raw <- BAI.raw[!BAI.raw$Plot == "c.0..0..0..0..0..0..0..0..0..0..0..0..0..0..0..0..0..0..0..0...1", ]
+BAI.raw <- BAI.raw[!BAI.raw$Plot == "c.0..0..0..0..0..0..0..0..0..0..0..0..0..0..0..0..0..0..0..0...2", ]
+BAI.raw <- BAI.raw[!BAI.raw$Plot == "c.0..0..0..0..0..0..0..0..0..0..0..0..0..0..0..0..0..0..0..0...3", ]
+BAI.raw <- BAI.raw[!BAI.raw$Plot == "c.0..0..0..0..0..0..0..0..0..0..0..0..0..0..0..0..0..0..0..0...4", ]
+
+#########################################################################################################
+
+BAI.plot.lister <- as.data.frame(unique(BAI.raw$Plot))
+#write.xlsx(BAI.plot.lister, "C:/Users/Mike/Desktop/BAI.plot.lister.xlsx")
+BAI.map <- read_excel("C:/Users/Mike/Desktop/BAI.plot.lister.xlsx")
+BAI.raw <- left_join(BAI.raw,BAI.map)
+
+# Re executing the following starting 2/2/2017
+# Ok, now we're pretty cleaned up, but we need to cross reference these with out plot inventory
+# Prep the data for a cross walk with Christy's raw data
+
+#########################################################
+
+pre.harvest <- read_excel("C:/Users/Mike/Desktop/MSU_WVU/Ruffa_Sale/raw_data/plot_inventory/CA_TreeList.xlsx",sheet="Sheet1")
+keeps <- c("TreeID","Species","DBH.cm","Treat_ID")
+pre.harvest <- pre.harvest[keeps]
+pre.harvest.plots <- unique(pre.harvest$Treat_ID)
+#write.xlsx(pre.harvest.plots, "C:/Users/Mike/Desktop/pre.harvest.plots.xlsx")
+inventory.plots <- read_excel("C:/Users/Mike/Desktop/pre.harvest.plots.xlsx")
+pre.harvest <- left_join(pre.harvest,inventory.plots)
+
+
+BAI.tree.plot <- left_join(pre.harvest,BAI.raw)
+BAI.2010.2015 <- filter(BAI.tree.plot, Year.filter > "2005")
+BAI.2010.2015$PlotID <- as.factor(BAI.2010.2015$PlotID)
