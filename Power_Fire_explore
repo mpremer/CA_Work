@@ -1,0 +1,35 @@
+dev.off
+rm(list=ls())
+
+library(dplyr)
+library(ggplot2)
+library(reshape2)
+library(readxl)
+library(lattice)
+
+power.trees <- read_excel("C:/Users/Mike/Desktop/Power_RAW_20170213.xlsx",sheet="Trees")
+power.plots <- read_excel("C:/Users/Mike/Desktop/Power_RAW_20170213.xlsx",sheet="PlotINFO")
+names(power.plots) <- make.names(names(power.plots))
+keeps <- c("StandID","PlotID","Plot.size","Planting.Group","PCT")
+power.plots <- power.plots[keeps]
+
+stand.lister <- power.trees %>%
+  left_join(., power.plots)%>%
+  filter(., dbh < "30")%>%
+  mutate(dbh.class = (2*as.integer((dbh+(2/2))/2)))%>%
+  mutate(basal.area = (dbh^2)*0.005454)%>%
+  mutate(stocking = 43560/(Plot.size*10.7639)) %>% 
+  mutate(ba.acre = basal.area*stocking)%>%
+    group_by(StandID,PlotID,Species,dbh.class,stocking,Planting.Group,PCT)%>%
+    summarize(basal.area.acre = sum(ba.acre))
+
+ggplot(stand.lister,aes(x=dbh.class,y=basal.area.acre,fill=PCT))+
+  geom_bar(stat="identity",position="dodge")+
+  #stat_smooth(aes(group=1),method="gam",formula=y~s(x,k=3),se=TRUE)+
+  theme(strip.background = element_blank(),
+        axis.text=element_text(size=12),
+        axis.title=element_text(size=12),
+        strip.text=element_text(,size=12))+
+  facet_wrap(~Species)
+
+coplot(basal.area.acre~dbh.class|Planting.Group*PCT,data=stand.lister)
